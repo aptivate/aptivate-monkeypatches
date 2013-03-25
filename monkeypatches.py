@@ -12,7 +12,7 @@ from django.template.response import TemplateResponse
 from django.test.client import ClientHandler, RequestFactory, MULTIPART_CONTENT, \
     urlparse, FakePayload
 from django.test.utils import ContextList
-from monkeypatch import before, after, patch
+from aptivate_monkeypatch.monkeypatch import before, after, patch
 from pprint import PrettyPrinter
 import django.template.loader
 
@@ -590,3 +590,83 @@ def bound_data_with_bug_19611_patch(original_function, self, data, initial):
     the initial value always.
     """
     return initial
+
+# patch for deprecated https://code.djangoproject.com/ticket/20030,
+# to get us through django 1.5
+from django.db.backends import BaseDatabaseWrapper, BaseDatabaseFeatures
+@patch(BaseDatabaseFeatures, 'supports_transactions')
+def supports_transactions_with_bug_20030_patch(original_function, self):
+    self.connection._in_supports_transactions = True
+    try:
+        return original_function(self)
+    finally:
+        self.connection._in_supports_transactions = False
+@patch(BaseDatabaseWrapper, 'leave_transaction_management')
+def leave_transaction_management_with_bug_20030_patch(original_function, self):
+    if getattr(self, '_in_supports_transactions', False) and self._dirty:
+        # supports_transactions not finished, must have been aborted
+        # by an exception, so swallow any exceptions thrown by
+        # leave_transaction_management()
+        try:
+            original_function(self)
+        except:
+            # ignore exceptions
+            pass
+    else:
+        original_function(self)
+
+# we can't descend a relationship into a different database, no matter
+# how much we might want to.
+"""
+from django.db.models.sql.compiler import SQLCompiler
+@patch(SQLCompiler, 'fill_related_selections')
+def fill_related_selections_without_different_dbs(
+    original_fill_related_selections, self, opts=None, root_alias=None,
+    cur_depth=1, used=None, requested=None, restricted=None, nullable=None,
+    dupe_set=None, avoid_set=None):
+    
+    if not opts:
+        opts = self.query.get_meta()
+        root_alias = self.query.get_initial_alias()
+        self.query.related_select_cols = []
+        self.query.related_select_fields = []
+        
+    compiler = self
+    
+    # In the scope of executing fill_related_selections() only, we patch the
+    # opts argument's get_fields_with_model() method so that certain fields
+    # are not returned: the ones which are foreign keys to different
+    # databases.
+    
+    def get_fields_with_model_without_different_dbs(
+        original_get_fields_with_model):
+        
+        from django.db.models.fields.related import ForeignKey
+        return [(field, model)
+            for field, model in original_get_fields_with_model(opts)
+            if not isinstance(field, ForeignKey)
+            or field.rel.to._meta.db_tablespace != compiler.using]
+
+    # import pdb; pdb.set_trace()
+
+    with patch(opts, 'get_fields_with_model',
+        get_fields_with_model_without_different_dbs):
+        
+        return original_fill_related_selections(self, opts, root_alias,
+            cur_depth, used, requested, restricted, nullable, dupe_set,
+            avoid_set)
+"""
+        
+"""
+from django.db.models import query_utils
+@patch(query_utils, 'select_related_descend')
+def select_related_descend_without_different_dbs(original_function,
+    field, restricted, requested, load_fields, reverse=False):
+    
+    # we should really use the actual connection ('using') for both
+    # sides, but how do we access connections from here?
+    from django.db import connections, DEFAULT_DB_ALIAS
+    
+    if field.model.
+')
+"""
