@@ -569,7 +569,7 @@ def add_filter_remove_value_capture(self, value, *args, **kwargs):
 def setup_joins_with_value_type_check(original_function, self, *args, **kwargs):
     results = original_function(self, *args, **kwargs)
     value = getattr(self, '_captured_value_for_monkeypatch', None)
-    from users.models import Price
+    # from users.models import Price
     # if results[0].model == Price:
     #     import pdb; pdb.set_trace()
     if value:
@@ -771,3 +771,18 @@ def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
         "admin/%s/delete_confirmation.html" % app_label,
         "admin/delete_confirmation.html"
     ], context, current_app=self.admin_site.name)
+
+# report the type of form that's missing the field
+from django.forms.forms import BaseForm
+@patch(BaseForm, '__getitem__')
+def getitem_with_form_string(original_function, self, name):
+    "Returns a BoundField with the given name."
+    try:
+        field = self.fields[name]
+    except KeyError:
+        raise KeyError('Key %r not found in form %s' % (name, self))
+    from django.forms.forms import BaseForm, BoundField
+    return BoundField(self, field, name)
+
+
+
