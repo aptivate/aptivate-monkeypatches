@@ -190,7 +190,11 @@ def post_clean_with_simpler_validation(original_function, self):
     try:
         self.instance.full_clean(exclude)
     except ValidationError, e:
-        self._update_errors(e.update_error_dict(None))
+        if 'error_dict' in dir(e):
+            # django 1.6?
+            self._update_errors(e)
+        else:
+            self._update_errors(e.update_error_dict(None))
 
 @patch(BaseForm, '_clean_form')
 def clean_form_with_field_errors(original_function, self):
