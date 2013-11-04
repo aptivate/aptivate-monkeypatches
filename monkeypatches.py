@@ -492,8 +492,12 @@ def HttpResponse_init_with_context_capture(original_function, self, content='',
 
     original_function(self, content, *args, **kwargs)
     if 'context' not in dir(self):
-        # SafeString should have a context attribute added by the code above
-        self.context = content.context
+        if 'context_data' in dir(self):
+            self.context = self.context_data
+        else:
+            # SafeString should have a context attribute added by the 
+            # template_render_with_debugging() monkeypatch above.
+            self.context = content.context
 
 @patch(django.template.defaulttags.URLNode, 'render')
 def urlnode_render_with_debugging(original_function, self, context):
