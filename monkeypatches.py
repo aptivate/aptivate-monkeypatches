@@ -470,15 +470,30 @@ def template_loader_render_to_string_with_debugging(original_function,
             (template_name, e), sys.exc_info()[2]
 """
 
-# Show the filename that contained the template error
+# Show the filename that contained the template error. Also store the context
+# used to render a HttpResponse. How else are we supposed to access it in our
+# tests? SearchView for example calls render_to_response which discards the
+# context used.
 @patch(django.template.base.Template, 'render')
 def template_render_with_debugging(original_function, self, context):
     try:
-        return original_function(self, context)
+        response = original_function(self, context)
+        response.context = context
+        return response
     except Exception as e:
         import sys
         raise Exception, "Failed to render template: %s: %s" % \
             (self.name, e), sys.exc_info()[2]
+
+import django.http.response
+@patch(django.http.response.HttpResponse, '__init__')
+def HttpResponse_init_with_context_capture(original_function, self, content='',
+    *args, **kwargs):
+
+    original_function(self, content, *args, **kwargs)
+    if 'context' not in dir(self):
+        # SafeString should have a context attribute added by the code above
+        self.context = content.context
 
 @patch(django.template.defaulttags.URLNode, 'render')
 def urlnode_render_with_debugging(original_function, self, context):
