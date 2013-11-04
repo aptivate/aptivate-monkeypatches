@@ -249,6 +249,7 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
                 	("No such key %s in %s\n" % (lookup_view,
                         [k for k in self.reverse_dict.keys() if not callable(k)])) +
                 	("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
+
 if '_reverse_with_prefix' in dir(RegexURLResolver):
     # support for Django 1.4:
     patch(RegexURLResolver, '_reverse_with_prefix', reverse_with_debugging)
@@ -492,6 +493,25 @@ def urlnode_render_with_debugging(original_function, self, context):
         raise Exception(("Failed to reverse %s in context %s (did you " +
             "forget to enclose view name in quotes?): the exception was: %s") %
             (self.view_name, context, e))
+
+import django.template.loader
+@patch(django.template.loader, 'get_template_from_string')
+def get_template_from_string_with_debug_filename(original_function, source,
+    origin=None, name=None):
+
+    """
+    Returns a compiled Template object for the given template code,
+    handling template inheritance recursively. Unlike the original version,
+    if it fails this will report the origin as part of the exception
+    message.
+    """
+
+    try:
+        return original_function(source, origin, name)
+    except Exception as e:
+        import sys
+        raise Exception, "Failed to load template %s: %s" % (origin, e), \
+            sys.exc_info()[2]
 
 from django.db.models.fields import DateTimeField
 @before(DateTimeField, 'get_prep_value')
