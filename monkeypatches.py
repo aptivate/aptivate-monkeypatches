@@ -823,5 +823,9 @@ def getitem_with_form_string(original_function, self, name):
     from django.forms.forms import BaseForm, BoundField
     return BoundField(self, field, name)
 
-
-
+import haystack.backends.whoosh_backend
+@before(haystack.backends.whoosh_backend.WhooshSearchBackend, 'search')
+def WhooshSearchBackend_search_with_logging(self, query_string, **kwargs):
+    import logging
+    logger = logging.getLogger('haystack.backends.whoosh_backend.WhooshSearchBackend')
+    logger.debug('search query: %s' % query_string)
