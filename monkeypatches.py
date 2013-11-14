@@ -492,12 +492,16 @@ def HttpResponse_init_with_context_capture(original_function, self, content='',
     *args, **kwargs):
 
     original_function(self, content, *args, **kwargs)
+
     if 'context' not in dir(self):
         if 'context_data' in dir(self):
             self.context = self.context_data
-        else:
-            # SafeString should have a context attribute added by the 
-            # template_render_with_debugging() monkeypatch above.
+        # SafeString should have a context attribute added by the 
+        # template_render_with_debugging() monkeypatch above. But it's
+        # possible to return a response without rendering anything,
+        # for example a HttpResponseRedirect, so we can't assume that the
+        # context attribute will be in the response.
+        elif hasattr(content, 'context'):
             self.context = content.context
 
 @patch(django.template.defaulttags.URLNode, 'render')
