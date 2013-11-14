@@ -477,6 +477,7 @@ def template_loader_render_to_string_with_debugging(original_function,
 @patch(django.template.base.Template, 'render')
 def template_render_with_debugging(original_function, self, context):
     try:
+        # import pdb; pdb.set_trace()
         response = original_function(self, context)
         response.context = context
         return response
@@ -833,3 +834,18 @@ def WhooshSearchBackend_search_with_logging(self, query_string, **kwargs):
     import logging
     logger = logging.getLogger('haystack.backends.whoosh_backend.WhooshSearchBackend')
     logger.debug('search query: %s' % query_string)
+
+# The activate language should always be one of LANGUAGES. 'en-us' is not.
+# The bug is https://code.djangoproject.com/ticket/10078, but the "fix" was to
+# document it, not actually fix it. settings.LANGUAGE_CODE is also
+# "system-neutral" and has the distinct advantage of actually being supported
+# by the system, so activate it before running any management commands.
+import haystack.management.commands.update_index
+@patch(haystack.management.commands.update_index.Command, 'update_backend')
+def update_backend_with_switch_to_supported_language(original_command,
+    self, label, using):
+
+    from django.conf import settings
+    from django.utils.translation import override
+    with override(settings.LANGUAGE_CODE):
+        return original_command(self, label, using)
