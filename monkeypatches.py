@@ -855,3 +855,31 @@ def update_backend_with_switch_to_supported_language(original_command,
     from django.utils.translation import override
     with override(settings.LANGUAGE_CODE):
         return original_command(self, label, using)
+
+# help to debug broken migrations by not hiding the exception message
+# and stack trace.
+import south.migration.base
+@patch(south.migration.base.Migration, 'migration')
+def Migration_migration_with_usable_stacktrace(original_function, self):
+    "Tries to load the actual migration module"
+    full_name = self.full_name()
+
+    import sys
+    try:
+        migration = sys.modules[full_name]
+    except KeyError:
+        from south import exceptions
+        try:
+            migration = __import__(full_name, {}, {}, ['Migration'])
+        except ImportError as e:
+            raise exceptions.UnknownMigration(self, sys.exc_info())
+        except Exception as e:
+            raise exceptions.BrokenMigration, sys.exc_info()[1], \
+                sys.exc_info()[2]
+    
+    # Override some imports
+    migration._ = lambda x: x  # Fake i18n
+    from south.utils import datetime_utils
+    migration.datetime = datetime_utils
+    return migration
+
