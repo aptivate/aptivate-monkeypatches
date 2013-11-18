@@ -883,3 +883,76 @@ def Migration_migration_with_usable_stacktrace(original_function, self):
     migration.datetime = datetime_utils
     return migration
 
+# Fix MySQLdb trying to raise an error in a broken way
+import MySQLdb.connections
+# @patch(MySQLdb.connections, 'defaulterrorhandler')
+@patch(MySQLdb.connections.Connection, 'errorhandler')
+def defaulterrorhandler_with_fixed_raise_statement(original_function,
+    connection, cursor, errorclass, errorvalue):
+
+    """
+
+    If cursor is not None, (errorclass, errorvalue) is appended to
+    cursor.messages; otherwise it is appended to
+    connection.messages. Then errorclass is raised with errorvalue as
+    the value.
+
+    You can override this with your own error handler by assigning it
+    to the instance.
+
+    """
+    error = errorclass, errorvalue
+    if cursor:
+        cursor.messages.append(error)
+    else:
+        connection.messages.append(error)
+    del cursor
+    del connection
+
+    import sys
+    raise errorclass, errorvalue, sys.exc_info()[2]
+#import MySQLdb.cursors
+#@after(MySQLdb.cursors.BaseCursor, '__init__')
+#def BaseCursor_init_with_replacement_error_handler(self, connection):
+#    self.errorhandler = defaulterrorhandler_with_fixed_raise_statement
+
+import south.migration.migrators
+@patch(south.migration.migrators.Forwards, 'format_backwards')
+def format_backwards_with_error_recovery(original_function, self, migration):
+    try:
+        return original_function(self, migration)
+    except RuntimeError as e:
+        return "Unable to explain the backwards migration: %s" % e
+
+# Add support for South migrations to pytest
+try:
+    # import pdb; pdb.set_trace()
+
+    # We can't replace pytest_django.fixtures._django_db_setup without
+    # breaking pytest_django, which calls django.core.management.call_command
+    # to execute django's syncdb instead of south's syncdb, so we patch
+    # call_command if necessary, to do what we want instead.
+
+    from django.conf import settings
+    from django.core import management
+    commands = management.get_commands()
+    if commands['syncdb'] == 'south' and getattr(settings,
+        'SOUTH_TESTS_MIGRATE', True):
+
+        @patch(management, 'call_command')
+        def call_command_calling_south_instead_of_django_syncdb(original_function,
+            name, *args, **options):
+
+            # undo the damage done by _django_db_setup
+            commands['syncdb'] = 'south'
+
+            if name == 'syncdb':
+                options['migrate'] = True
+            elif name == 'flush':
+                return True
+
+            return original_function(name, *args, **options)
+except ImportError as e:
+    # probably not using PyTest
+    pass
+
