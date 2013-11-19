@@ -956,3 +956,48 @@ except ImportError as e:
     # probably not using PyTest
     pass
 
+try:
+    # catch referencing a field with no rel
+    import hvad.fieldtranslator
+    @patch(hvad.fieldtranslator, '_get_model_from_field')
+    def hvad_get_model_from_field_with_error_checking(original_function,
+        starting_model, fieldname):
+
+        # TODO: m2m handling
+        field, model, direct, _ = starting_model._meta.get_field_by_name(fieldname)
+        if model:
+            return model
+        elif direct:
+            if field.rel is None:
+                raise AttributeError('%s.%s has no relationship defined' %
+                    (starting_model._meta.object_name, fieldname))
+            return field.rel.to
+        else:
+            return field.model
+except ImportError as e:
+    # probably not using Hvad
+    pass
+
+import django.db.models.fields.related
+@before(django.db.models.fields.related.ReverseSingleRelatedObjectDescriptor,
+    '__set__')
+def ReverseSingleRelatedObjectDescriptor_set_with_better_debugging(self,
+    instance, value):
+    
+    # ValueError: Cannot assign "<ContentFile: Raw content>":
+    # "AttachedFile.attached_file" must be a "File" instance. But what KIND
+    # of File?
+
+    if instance is None:
+        raise AttributeError("%s must be accessed via instance" % self.field.name)
+
+    # If null=True, we can assign null here, but otherwise the value needs
+    # to be an instance of the related class.
+    if value is None and self.field.null == False:
+        raise ValueError('Cannot assign None: "%s.%s" does not allow null values.' %
+                            (instance._meta.object_name, self.field.name))
+    elif value is not None and not isinstance(value, self.field.rel.to):
+        raise ValueError('Cannot assign "%r": "%s.%s" must be a "%s" instance.' %
+                            (value, instance._meta.object_name,
+                             self.field.name, self.field.rel.to))
+
