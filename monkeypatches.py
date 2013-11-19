@@ -131,7 +131,7 @@ def queryset_get_with_exception_detail(original_function, self, *args, **kwargs)
     
     try:
         return original_function(self, *args, **kwargs)
-    except self.model.DoesNotExist as e:
+    except (self.model.DoesNotExist, self.model.MultipleObjectsReturned) as e:
         # import pdb; pdb.set_trace()
         import sys
         (klass, message, stack) = sys.exc_info()
