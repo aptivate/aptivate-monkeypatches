@@ -19,7 +19,7 @@ import django.template.loader
 # import os
 # os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 
-@patch(ClientHandler, 'get_response') 
+@patch(ClientHandler, 'get_response')
 def get_response_with_exception_passthru(original_function, self, request):
     """
     Returns an HttpResponse object for the given HttpRequest. Unlike
@@ -27,9 +27,9 @@ def get_response_with_exception_passthru(original_function, self, request):
     allows you to see the full stack trace in your tests instead of
     a 500 error page.
     """
-    
+
     # print("get_response(%s)" % request)
-    
+
     from django.core import exceptions, urlresolvers
     from django.conf import settings
 
@@ -90,7 +90,7 @@ def get_response_with_exception_passthru(original_function, self, request):
     if hasattr(response, 'render') and callable(response.render):
         for middleware_method in self._template_response_middleware:
             response = middleware_method(request, response)
-        
+
         """
         try:
             response.render()
@@ -128,7 +128,7 @@ def queryset_get_with_exception_detail(original_function, self, *args, **kwargs)
     keyword arguments. This version provides extra details about the query
     if it fails to find any results.
     """
-    
+
     try:
         return original_function(self, *args, **kwargs)
     except (self.model.DoesNotExist, self.model.MultipleObjectsReturned) as e:
@@ -167,7 +167,7 @@ def post_clean_with_simpler_validation(original_function, self):
     patch it in ourselves: do the same validation on objects when called
     from the form, as the object would do on itself.
     """
-    
+
     opts = self._meta
     # Update the model instance with self.cleaned_data.
     # print "construct_instance with password = %s" % self.cleaned_data.get('password')
@@ -203,13 +203,13 @@ def clean_form_with_field_errors(original_function, self):
     """
     Allow BaseForm._clean_form to report errors on individual fields,
     instead of the whole form, like this:
-    
+
     raise ValidationError({'password': 'Incorrect password'})
-    
+
     The standard version only works on the whole form:
     https://code.djangoproject.com/ticket/16423
     """
-    
+
     from django.core.exceptions import ValidationError
     try:
         self.cleaned_data = self.clean()
@@ -228,7 +228,7 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
     Show all the patterns in the reverse_dict if a reverse lookup fails,
     to help figure out why.
     """
-    
+
     try:
         return original_function(self, lookup_view, *args, **kwargs)
     except NoReverseMatch as e:
@@ -236,7 +236,7 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
     	# function which isn't identical (comparable) to another
     	# wrapping of the same function
     	# import pdb; pdb.set_trace()
-    	
+
         if lookup_view in self.reverse_dict:
             raise NoReverseMatch(str(e) + (" Possible match: %s" %
                 (self.reverse_dict[lookup_view],)))
@@ -274,7 +274,7 @@ class FieldlineWithCustomReadOnlyField(object):
     Custom replacement for Fieldline that allows fields in the Admin
     interface to render their own read-only view if they like.
     """
-    
+
     def __init__(self, form, field, readonly_fields=None, model_admin=None):
         self.form = form # A django.forms.Form instance
         if not hasattr(field, "__iter__"):
@@ -317,7 +317,7 @@ if not hasattr(auth_models.Group, 'natural_key'):
     Allow group lookups by name in fixtures, until
     https://code.djangoproject.com/ticket/13914 lands.
     """
-    
+
     from django.db import models as db_models
     class GroupManagerWithNaturalKey(db_models.Manager):
         def get_by_natural_key(self, name):
@@ -341,7 +341,7 @@ def Deserializer_with_debugging(original_function, object_list, **options):
     db_models.get_apps()
     for d in object_list:
         print "loading %s" % d
-        
+
         # Look up the model and starting build a dict of data for it.
         Model = _get_model(d["model"])
         data = {Model._meta.pk.attname : Model._meta.pk.to_python(d["pk"])}
@@ -376,7 +376,7 @@ def Deserializer_with_debugging(original_function, object_list, **options):
                 for i, pk in enumerate(field_value):
                     print "  %s: converted %s to %s" % (field.name,
                         pk, m2m_data[field.name][i])
-    
+
     result = original_function(object_list, **options)
     print "  result = %s" % result
     import traceback
@@ -429,7 +429,7 @@ def get_results_with_debugging(self, request):
 from django.db.models.fields.related import ReverseManyRelatedObjectsDescriptor
 def related_objects_set_without_clear(original_function, self, instance,
     new_values):
-    
+
     if instance is None:
         raise AttributeError("Manager must be accessed via instance")
 
@@ -439,7 +439,7 @@ def related_objects_set_without_clear(original_function, self, instance,
 
     manager = self.__get__(instance)
     old_values = manager.all()
-    values_to_remove = [v for v in old_values 
+    values_to_remove = [v for v in old_values
         if v not in new_values]
     manager.remove(*values_to_remove)
 patch(ReverseManyRelatedObjectsDescriptor, '__set__',
@@ -452,7 +452,7 @@ def AutoField_to_python_with_improved_debugging(original_function, self, value):
     except (TypeError, ValueError):
         from django.core.exceptions import ValidationError
         raise ValidationError(self.error_messages['invalid'] +
-            ": %s.%s is not allowed to have value '%s'" % 
+            ": %s.%s is not allowed to have value '%s'" %
             (self.model, self.name, value))
 # print "before patch: IntranetUser.id.to_python = %s" % IntranetUser.id.to_python
 patch(AutoField, 'to_python', AutoField_to_python_with_improved_debugging)
@@ -463,7 +463,7 @@ patch(AutoField, 'to_python', AutoField_to_python_with_improved_debugging)
 @patch(django.template.loader, 'render_to_string')
 def template_loader_render_to_string_with_debugging(original_function,
     template_name, dictionary=None, context_instance=None):
-    
+
     try:
         return original_function(template_name, dictionary, context_instance)
     except Exception as e:
@@ -498,7 +498,7 @@ def HttpResponse_init_with_context_capture(original_function, self, content='',
     if 'context' not in dir(self):
         if 'context_data' in dir(self):
             self.context = self.context_data
-        # SafeString should have a context attribute added by the 
+        # SafeString should have a context attribute added by the
         # template_render_with_debugging() monkeypatch above. But it's
         # possible to return a response without rendering anything,
         # for example a HttpResponseRedirect, so we can't assume that the
@@ -512,7 +512,7 @@ def urlnode_render_with_debugging(original_function, self, context):
         raise Exception(("Failed to resolve %s in context: did you " +
             "forget to enclose view name in quotes? Context is: %s") %
             (self.view_name, context))
-        
+
     try:
         return original_function(self, context)
     except NoReverseMatch as e:
@@ -558,7 +558,7 @@ def Variable_init_with_underscores_allowed(original_function, self, var):
     # render variable names containing underscores anyway.
     if not settings.DEBUG:
         return original_function(self, var)
-    
+
     self.var = var
     self.literal = None
     self.lookups = None
@@ -627,10 +627,10 @@ def setup_joins_with_value_type_check(original_function, self, *args, **kwargs):
         target = results[1]
         from django.db.models.fields.related import RelatedField
         from django.db.models import Model
-        if (isinstance(field, RelatedField) and isinstance(value, Model) and 
-            not isinstance(value, target.model)): 
+        if (isinstance(field, RelatedField) and isinstance(value, Model) and
+            not isinstance(value, target.model)):
             raise TypeError, "'%s' instance expected" % target.model._meta.object_name
-    return results         
+    return results
 
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 @patch(ReadOnlyPasswordHashField, 'bound_data')
@@ -674,23 +674,23 @@ def fill_related_selections_without_different_dbs(
     original_fill_related_selections, self, opts=None, root_alias=None,
     cur_depth=1, used=None, requested=None, restricted=None, nullable=None,
     dupe_set=None, avoid_set=None):
-    
+
     if not opts:
         opts = self.query.get_meta()
         root_alias = self.query.get_initial_alias()
         self.query.related_select_cols = []
         self.query.related_select_fields = []
-        
+
     compiler = self
-    
+
     # In the scope of executing fill_related_selections() only, we patch the
     # opts argument's get_fields_with_model() method so that certain fields
     # are not returned: the ones which are foreign keys to different
     # databases.
-    
+
     def get_fields_with_model_without_different_dbs(
         original_get_fields_with_model):
-        
+
         from django.db.models.fields.related import ForeignKey
         return [(field, model)
             for field, model in original_get_fields_with_model(opts)
@@ -701,22 +701,22 @@ def fill_related_selections_without_different_dbs(
 
     with patch(opts, 'get_fields_with_model',
         get_fields_with_model_without_different_dbs):
-        
+
         return original_fill_related_selections(self, opts, root_alias,
             cur_depth, used, requested, restricted, nullable, dupe_set,
             avoid_set)
 """
-        
+
 """
 from django.db.models import query_utils
 @patch(query_utils, 'select_related_descend')
 def select_related_descend_without_different_dbs(original_function,
     field, restricted, requested, load_fields, reverse=False):
-    
+
     # we should really use the actual connection ('using') for both
     # sides, but how do we access connections from here?
     from django.db import connections, DEFAULT_DB_ALIAS
-    
+
     if field.model.
 ')
 """
@@ -727,7 +727,7 @@ from django.contrib.admin.options import ModelAdmin
 @insert(ModelAdmin, 'get_deleted_objects')
 def ModelAdmin_get_deleted_objects(original_function, self, objs, opts,
     request, using):
-    
+
     """
     Find all objects related to ``objs`` that should also be deleted. ``objs``
     must be a homogenous iterable of objects (e.g. a QuerySet).
@@ -735,7 +735,7 @@ def ModelAdmin_get_deleted_objects(original_function, self, objs, opts,
     Returns a nested list of strings suitable for display in the
     template with the ``unordered_list`` filter.
 
-    By default this just passes the request on to 
+    By default this just passes the request on to
     django.contrib.admin.util.get_deleted_objects, but this method exists
     to allow subclasses to override the permissions required to delete
     things.
@@ -743,7 +743,7 @@ def ModelAdmin_get_deleted_objects(original_function, self, objs, opts,
     from django.contrib.admin.util import get_deleted_objects
     return get_deleted_objects(objs, opts, request.user, self.admin_site, using)
 
-# Patch ModelAdmin.delete_view() to call the instance method 
+# Patch ModelAdmin.delete_view() to call the instance method
 # get_deleted_objects() instead of the global function, to allow overriding it.
 from django.contrib.admin.options import csrf_protect_m
 from django.db import transaction
@@ -752,11 +752,11 @@ from django.db import transaction
 @transaction.commit_on_success
 def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
     object_id, extra_context=None):
-    
+
     "The 'delete' admin view for this model."
     opts = self.model._meta
     app_label = opts.app_label
-    
+
     from django.contrib.admin.util import unquote # , flatten_fieldsets, get_deleted_objects, model_format_dict
     obj = self.get_object(request, unquote(object_id))
 
@@ -767,7 +767,7 @@ def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
     from django.utils.encoding import force_unicode
     from django.utils.html import escape
     if obj is None:
-        from django.http import Http404 
+        from django.http import Http404
         raise Http404(_('%(name)s object with primary key %(key)r does not exist.') % {'name': force_unicode(opts.verbose_name), 'key': escape(object_id)})
 
     from django.db import router
@@ -781,7 +781,7 @@ def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
     if request.POST: # The user has already confirmed the deletion.
         if perms_needed:
             raise PermissionDenied
-        
+
         obj_display = force_unicode(obj)
         self.log_deletion(request, obj, obj_display)
         self.delete_model(request, obj)
@@ -876,7 +876,7 @@ def Migration_migration_with_usable_stacktrace(original_function, self):
         except Exception as e:
             raise exceptions.BrokenMigration, sys.exc_info()[1], \
                 sys.exc_info()[2]
-    
+
     # Override some imports
     migration._ = lambda x: x  # Fake i18n
     from south.utils import datetime_utils
@@ -983,7 +983,7 @@ import django.db.models.fields.related
     '__set__')
 def ReverseSingleRelatedObjectDescriptor_set_with_better_debugging(self,
     instance, value):
-    
+
     # ValueError: Cannot assign "<ContentFile: Raw content>":
     # "AttachedFile.attached_file" must be a "File" instance. But what KIND
     # of File?
@@ -1016,7 +1016,7 @@ import haystack.backends.whoosh_backend
 def Searcher_with_support_for_sorting_by_multiple_fields(original_function,
     self, *args, **kwargs):
 
-    sort_by = kwargs.pop('sort_by')
+    sort_by = kwargs.pop('sort_by', None)
 
     if sort_by is not None:
         # Determine if we need to reverse the results and if Whoosh can
@@ -1028,7 +1028,7 @@ def Searcher_with_support_for_sorting_by_multiple_fields(original_function,
         for order_by in sort_by:
             if order_by.startswith('-'):
                 reverse_counter += 1
-        
+
         if reverse_counter != 0 and reverse_counter != len(sort_by):
             raise SearchBackendError("Whoosh does not handle reverse sorting "
                 "by some fields and not others.")
