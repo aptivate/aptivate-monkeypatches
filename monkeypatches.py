@@ -1029,7 +1029,7 @@ def Searcher_with_support_for_sorting_by_multiple_fields(original_function,
             if order_by.startswith('-'):
                 reverse_counter += 1
         
-        if len(sort_by) != reverse_counter:
+        if reverse_counter != 0 and reverse_counter != len(sort_by):
             raise SearchBackendError("Whoosh does not handle reverse sorting "
                 "by some fields and not others.")
 
