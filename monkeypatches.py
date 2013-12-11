@@ -19,7 +19,8 @@ import django.template.loader
 # import os
 # os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 
-@patch(ClientHandler, 'get_response')
+import django.core.handlers.base
+@patch(django.core.handlers.base.BaseHandler, 'get_response')
 def get_response_with_exception_passthru(original_function, self, request):
     """
     Returns an HttpResponse object for the given HttpRequest. Unlike
@@ -107,7 +108,19 @@ def get_response_with_exception_passthru(original_function, self, request):
     # Apply response middleware, regardless of the response
     for middleware_method in self._response_middleware:
         response = middleware_method(request, response)
-    response = self.apply_response_fixes(request, response)
+    return self.apply_response_fixes(request, response)
+
+import django.test.client
+@patch(django.test.client.Client, 'request')
+def django_test_client_Client_request_with_unbroken_context(
+    django_test_client_Client_request_without_unbroken_context, self,
+    **request):
+
+    response = django_test_client_Client_request_without_unbroken_context(self,
+        **request)
+
+    if hasattr(response, '_monkeypatches_contextdata'):
+        response.context = response._monkeypatches_contextdata
 
     return response
 
@@ -472,39 +485,59 @@ def template_loader_render_to_string_with_debugging(original_function,
             (template_name, e), sys.exc_info()[2]
 """
 
-# Show the filename that contained the template error. Also store the context
-# used to render a HttpResponse. How else are we supposed to access it in our
-# tests? SearchView for example calls render_to_response which discards the
-# context used.
-@patch(django.template.base.Template, 'render')
-def template_render_with_debugging(original_function, self, context):
-    try:
-        # import pdb; pdb.set_trace()
-        response = original_function(self, context)
-        response.context = context
+# We used to patch django.template.base.Template.render and
+# HttpResponse.__init__ to poke copies of the context into those objects. This
+# is really useful for tests, but it breaks the caching middleware horribly
+# when it tries to pickle objects that can't be pickled. So now we patch
+# django.core.handlers.base.BaseHandler to add the context to the response
+# at the last minute instead.
+import django.core.handlers.base
+@patch(django.core.handlers.base.BaseHandler, 'get_response')
+def django_core_handlers_base_BaseHandler_with_context_injection(
+    django_core_handlers_base_BaseHandler_without_context_injection, self,
+    request):
+
+    shared_state = {}
+
+    # Collect the filename and context used to render templates. How else are
+    # we supposed to access it in our tests? SearchView for example calls
+    # render_to_response which discards the context used.
+    def template_render_with_debugging(template_render_without_debugging, self,
+        context):
+
+        try:
+            shared_state['context'] = context
+            return template_render_without_debugging(self, context)
+        except Exception as e:
+            import sys
+            raise Exception, "Failed to render template: %s: %s" % \
+                (self.name, e), sys.exc_info()[2]
+
+    # Temporarily patch it in
+    with patch(django.template.base.Template, 'render',
+        template_render_with_debugging):
+
+        response = django_core_handlers_base_BaseHandler_without_context_injection(
+            self, request)
+
+        if not hasattr(response, 'context') or response.context is None:
+            if hasattr(response, 'context_data'):
+                response.context = response.context_data
+            elif 'context' in shared_state:
+                response.context = shared_state['context']
+
+            # SafeString should have a context attribute added by the
+            # template_render_with_debugging() monkeypatch above. But it's
+            # possible to return a response without rendering anything,
+            # for example a HttpResponseRedirect, so we can't assume that the
+            # context attribute will be in the response.
+
+        if hasattr(response, 'context'):
+            # Allow django_test_client_Client_request_with_unbroken_context
+            # to undo the damage done by django.test.client.Client.request()
+            response._monkeypatches_contextdata = response.context
+
         return response
-    except Exception as e:
-        import sys
-        raise Exception, "Failed to render template: %s: %s" % \
-            (self.name, e), sys.exc_info()[2]
-
-import django.http.response
-@patch(django.http.response.HttpResponse, '__init__')
-def HttpResponse_init_with_context_capture(original_function, self, content='',
-    *args, **kwargs):
-
-    original_function(self, content, *args, **kwargs)
-
-    if 'context' not in dir(self):
-        if 'context_data' in dir(self):
-            self.context = self.context_data
-        # SafeString should have a context attribute added by the
-        # template_render_with_debugging() monkeypatch above. But it's
-        # possible to return a response without rendering anything,
-        # for example a HttpResponseRedirect, so we can't assume that the
-        # context attribute will be in the response.
-        elif hasattr(content, 'context'):
-            self.context = content.context
 
 @patch(django.template.defaulttags.URLNode, 'render')
 def urlnode_render_with_debugging(original_function, self, context):
@@ -1001,4 +1034,85 @@ def ReverseSingleRelatedObjectDescriptor_set_with_better_debugging(self,
                             (value, instance._meta.object_name,
                              self.field.name, self.field.rel.to))
 
+try:
+    from django.utils.six.moves import cPickle as pickle
+except ImportError:
+    import pickle
+@patch(pickle, 'dumps')
+def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None):
+    try:
+        return original_dumps_function(obj, protocol)
+    except pickle.PicklingError as outer_exception:
+        # find the unpicklable members
+        import types
+
+        seen = []
+        pickle_errors = {}
+
+        def test_and_recurse(depth, path, value):
+            if depth > 10:
+                pickle_errors["depth"] = ("not recursing into %s: "
+                    "recursion depth exceeded" % path)
+                return
+
+            #if path == "._container[0].context.dicts[1]['csrf_token']":
+            #    import pdb; pdb.set_trace()
+
+            try:
+                original_dumps_function(value)
+                return
+            except pickle.PicklingError as e:
+                recursive_find_unpicklable_members(depth + 1, path, value, e)
+            except TypeError as e:
+                recursive_find_unpicklable_members(depth + 1, path, value, e)
+
+        def recursive_find_unpicklable_members(depth, path, sub_obj, exception):
+            if sub_obj in seen:
+                # pickle_errors[path] = "link to already-seen object %s" % id(sub_obj)
+                return
+
+            seen.append(sub_obj)
+            original_errors_count = len(pickle_errors)
+
+            if isinstance(sub_obj, object):
+                for attr_name in dir(sub_obj):
+                    if len(pickle_errors) > 20:
+                        break
+                    if attr_name.startswith('__'):
+                        pass
+                    elif hasattr(sub_obj.__class__, attr_name):
+                        # don't recurse down into attributes belonging to classes
+                        pass
+                    else:
+                        attr_value = getattr(sub_obj, attr_name)
+                        test_and_recurse(depth, "%s.%s" % (path, attr_name),
+                            attr_value)
+
+            if hasattr(sub_obj, 'iteritems'):
+                for key_name, key_value in sub_obj.iteritems():
+                    if len(pickle_errors) > 20:
+                        break
+                    key_value = sub_obj[key_name]
+                    test_and_recurse(depth, "%s['%s']" % (path, key_name),
+                        key_value)
+
+            if hasattr(sub_obj, '__getitem__'):
+                for index, attr_value in enumerate(sub_obj):
+                    if len(pickle_errors) > 20:
+                        break
+                    test_and_recurse(depth, "%s[%d]" % (path, index),
+                        attr_value)
+            
+            if original_errors_count == len(pickle_errors):
+                # if we couldn't find any members that were unpicklable, it
+                # must be something about this object itself, so stop here
+                pickle_errors[path] = "%s (did not find any errors inside)" % exception
+
+        import pdb; pdb.set_trace()
+        recursive_find_unpicklable_members(0, "", obj, outer_exception)
+
+        if len(pickle_errors) > 20:
+            pickle_errors["number"] = "too many errors, stopped at 20"
+
+        raise pickle.PicklingError("%s: %s" % (outer_exception, pickle_errors))
 
