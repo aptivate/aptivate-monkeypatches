@@ -1116,3 +1116,12 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
 
         raise pickle.PicklingError("%s: %s" % (outer_exception, pickle_errors))
 
+import django.db.backends.sqlite3.base
+@patch(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection')
+def sqlite_create_connection_with_debugging(original_function, self):
+    import sqlite3
+    try:
+        return original_function(self)
+    except sqlite3.OperationalError as e:
+        raise sqlite3.OperationalError("%s: %s" % (e, self.settings_dict['NAME']))
+
