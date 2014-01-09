@@ -91,15 +91,7 @@ def get_response_with_exception_passthru(original_function, self, request):
     if hasattr(response, 'render') and callable(response.render):
         for middleware_method in self._template_response_middleware:
             response = middleware_method(request, response)
-
-        """
-        try:
-            response.render()
-        except Exception as e:
-            if isinstance(response, TemplateResponse):
-                raise Exception("Failed to render template: %s: %s" %
-                    (response.template_name, e))
-        """
+        response = response.render()
 
     # Reset URLconf for this thread on the way out for complete
     # isolation of request.urlconf
