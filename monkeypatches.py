@@ -80,10 +80,10 @@ def get_response_with_exception_passthru(original_function, self, request):
 
     # Complain if the view returned None (a common error).
     if response is None:
-        try:
+        if isinstance(callback, types.FunctionType):    # FBV
             view_name = callback.func_name # If it's a function
-        except AttributeError:
-            view_name = callback.__class__.__name__ + '.__call__' # If it's a class
+        else:                                           # CBV
+            view_name = callback.__class__.__name__ + '.__call__'
         raise ValueError("The view %s.%s didn't return an HttpResponse object." % (callback.__module__, view_name))
 
     # If the response supports deferred rendering, apply template
