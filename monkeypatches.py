@@ -1108,3 +1108,13 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
 
         raise pickle.PicklingError("%s: %s" % (outer_exception, pickle_errors))
 
+# Temporary fix for https://code.djangoproject.com/ticket/21518
+# (copied from https://github.com/django/django/pull/2001/files)
+import django.dispatch
+import django.test.signals
+@django.dispatch.receiver(django.test.signals.setting_changed)
+def root_urlconf_changed_fixes_django_ticket_21518(**kwargs):
+    if kwargs['setting'] == 'ROOT_URLCONF':
+        from django.core.urlresolvers import clear_url_caches
+        clear_url_caches()
+
