@@ -859,27 +859,35 @@ def getitem_with_form_string(original_function, self, name):
     from django.forms.forms import BaseForm, BoundField
     return BoundField(self, field, name)
 
-import haystack.backends.whoosh_backend
-@before(haystack.backends.whoosh_backend.WhooshSearchBackend, 'search')
-def WhooshSearchBackend_search_with_logging(self, query_string, **kwargs):
-    import logging
-    logger = logging.getLogger('haystack.backends.whoosh_backend.WhooshSearchBackend')
-    logger.debug('search query: %s' % query_string)
+try:
+    import haystack.backends.whoosh_backend
+    @before(haystack.backends.whoosh_backend.WhooshSearchBackend, 'search')
+    def WhooshSearchBackend_search_with_logging(self, query_string, **kwargs):
+        import logging
+        logger = logging.getLogger('haystack.backends.whoosh_backend.WhooshSearchBackend')
+        logger.debug('search query: %s' % query_string)
+except ImportError:
+    # not installed
+    pass
 
-# The activate language should always be one of LANGUAGES. 'en-us' is not.
-# The bug is https://code.djangoproject.com/ticket/10078, but the "fix" was to
-# document it, not actually fix it. settings.LANGUAGE_CODE is also
-# "system-neutral" and has the distinct advantage of actually being supported
-# by the system, so activate it before running any management commands.
-import haystack.management.commands.update_index
-@patch(haystack.management.commands.update_index.Command, 'update_backend')
-def update_backend_with_switch_to_supported_language(original_command,
-    self, label, using):
+try:
+    # The activate language should always be one of LANGUAGES. 'en-us' is not.
+    # The bug is https://code.djangoproject.com/ticket/10078, but the "fix" was to
+    # document it, not actually fix it. settings.LANGUAGE_CODE is also
+    # "system-neutral" and has the distinct advantage of actually being supported
+    # by the system, so activate it before running any management commands.
+    import haystack.management.commands.update_index
+    @patch(haystack.management.commands.update_index.Command, 'update_backend')
+    def update_backend_with_switch_to_supported_language(original_command,
+        self, label, using):
 
-    from django.conf import settings
-    from django.utils.translation import override
-    with override(settings.LANGUAGE_CODE):
-        return original_command(self, label, using)
+        from django.conf import settings
+        from django.utils.translation import override
+        with override(settings.LANGUAGE_CODE):
+            return original_command(self, label, using)
+except ImportError:
+    # not installed
+    pass
 
 # help to debug broken migrations by not hiding the exception message
 # and stack trace.
@@ -1108,6 +1116,7 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
 
         raise pickle.PicklingError("%s: %s" % (outer_exception, pickle_errors))
 
+
 # Temporary fix for https://code.djangoproject.com/ticket/21518
 # (copied from https://github.com/django/django/pull/2001/files)
 import django.dispatch
@@ -1118,3 +1127,12 @@ def root_urlconf_changed_fixes_django_ticket_21518(**kwargs):
         from django.core.urlresolvers import clear_url_caches
         clear_url_caches()
 
+
+import django.db.backends.sqlite3.base
+@patch(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection')
+def sqlite_create_connection_with_debugging(original_function, self):
+    import sqlite3
+    try:
+        return original_function(self)
+    except sqlite3.OperationalError as e:
+        raise sqlite3.OperationalError("%s: %s" % (e, self.settings_dict['NAME']))
