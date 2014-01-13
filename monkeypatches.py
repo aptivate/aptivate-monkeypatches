@@ -270,8 +270,12 @@ def populate_reverse_dict_with_module_function_names(self):
 		if not isinstance(pattern, RegexURLResolver):
 			# import pdb; pdb.set_trace()
 			for reverse_item in reverse_dict.getlist(pattern.callback):
-				function_name = "%s.%s" % (pattern.callback.__module__,
-					pattern.callback.__name__)
+				if hasattr(pattern.callback, '__name__'):
+					function_name = "%s.%s" % (pattern.callback.__module__,
+						pattern.callback.__name__)
+				else:
+					function_name = "%s.%s" % (pattern.callback.__module__,
+						pattern.callback.__class__.__name__)
 				reverse_dict.appendlist(function_name, reverse_item)
 
 class FieldlineWithCustomReadOnlyField(object):
@@ -541,9 +545,10 @@ def urlnode_render_with_debugging(original_function, self, context):
     try:
         return original_function(self, context)
     except NoReverseMatch as e:
-        raise Exception(("Failed to reverse %s in context %s (did you " +
+        from django.utils.encoding import force_unicode
+        raise Exception((u"Failed to reverse %s in context %s (did you " +
             "forget to enclose view name in quotes?): the exception was: %s") %
-            (self.view_name, context, e))
+            (self.view_name, force_unicode(context), force_unicode(e)))
 
 import django.template.loader
 @patch(django.template.loader, 'get_template_from_string')
