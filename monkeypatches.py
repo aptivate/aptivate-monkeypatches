@@ -19,6 +19,89 @@ import django.template.loader
 # import os
 # os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 
+import django.core.handlers.base
+@patch(django.core.handlers.base.BaseHandler, 'get_response')
+def get_response_with_exception_passthru(original_function, self, request):
+    """
+    Returns an HttpResponse object for the given HttpRequest. Unlike
+    the original get_response, this does not catch exceptions, which
+    allows you to see the full stack trace in your tests instead of
+    a 500 error page.
+    """
+
+    # print("get_response(%s)" % request)
+
+    from django.core import exceptions, urlresolvers
+    from django.conf import settings
+
+    # Setup default url resolver for this thread, this code is outside
+    # the try/except so we don't get a spurious "unbound local
+    # variable" exception in the event an exception is raised before
+    # resolver is set
+    urlconf = settings.ROOT_URLCONF
+    urlresolvers.set_urlconf(urlconf)
+    resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
+    response = None
+    # Apply request middleware
+    for middleware_method in self._request_middleware:
+        response = middleware_method(request)
+        if response:
+            break
+
+    if response is None:
+        if hasattr(request, "urlconf"):
+            # Reset url resolver with a custom urlconf.
+            urlconf = request.urlconf
+            urlresolvers.set_urlconf(urlconf)
+            resolver = urlresolvers.RegexURLResolver(r'^/', urlconf)
+
+        callback, callback_args, callback_kwargs = resolver.resolve(
+                request.path_info)
+
+        # Apply view middleware
+        for middleware_method in self._view_middleware:
+            response = middleware_method(request, callback, callback_args, callback_kwargs)
+            if response:
+                break
+
+    if response is None:
+        try:
+            response = callback(request, *callback_args, **callback_kwargs)
+        except Exception, e:
+            # If the view raised an exception, run it through exception
+            # middleware, and if the exception middleware returns a
+            # response, use that. Otherwise, reraise the exception.
+            for middleware_method in self._exception_middleware:
+                response = middleware_method(request, e)
+                if response:
+                    break
+            if response is None:
+                raise
+
+    # Complain if the view returned None (a common error).
+    if response is None:
+        if isinstance(callback, types.FunctionType):    # FBV
+            view_name = callback.func_name # If it's a function
+        else:                                           # CBV
+            view_name = callback.__class__.__name__ + '.__call__'
+        raise ValueError("The view %s.%s didn't return an HttpResponse object." % (callback.__module__, view_name))
+
+    # If the response supports deferred rendering, apply template
+    # response middleware and the render the response
+    if hasattr(response, 'render') and callable(response.render):
+        for middleware_method in self._template_response_middleware:
+            response = middleware_method(request, response)
+        response = response.render()
+
+    # Reset URLconf for this thread on the way out for complete
+    # isolation of request.urlconf
+    urlresolvers.set_urlconf(None)
+
+    # Apply response middleware, regardless of the response
+    for middleware_method in self._response_middleware:
+        response = middleware_method(request, response)
+    return self.apply_response_fixes(request, response)
+
 import django.test.client
 @patch(django.test.client.Client, 'request')
 def django_test_client_Client_request_with_unbroken_context(
