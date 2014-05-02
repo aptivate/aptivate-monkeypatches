@@ -870,13 +870,18 @@ def getitem_with_form_string(original_function, self, name):
     return BoundField(self, field, name)
 
 try:
+    from haystack.exceptions import MissingDependency
+except ImportError:
+    MissingDependency = object
+
+try:
     import haystack.backends.whoosh_backend
     @before(haystack.backends.whoosh_backend.WhooshSearchBackend, 'search')
     def WhooshSearchBackend_search_with_logging(self, query_string, **kwargs):
         import logging
         logger = logging.getLogger('haystack.backends.whoosh_backend.WhooshSearchBackend')
         logger.debug('search query: %s' % query_string)
-except ImportError:
+except (ImportError, MissingDependency):
     # not installed
     pass
 
