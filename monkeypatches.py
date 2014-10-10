@@ -1142,12 +1142,20 @@ def root_urlconf_changed_fixes_django_ticket_21518(**kwargs):
         from django.core.urlresolvers import clear_url_caches
         clear_url_caches()
 
-
-import django.db.backends.sqlite3.base
-@patch(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection')
-def sqlite_create_connection_with_debugging(original_function, self):
+def sqlite_create_connection_with_debugging(original_function, self, *args, **kwargs):
     import sqlite3
     try:
-        return original_function(self)
+        return original_function(self, *args, **kwargs)
     except sqlite3.OperationalError as e:
         raise sqlite3.OperationalError("%s: %s" % (e, self.settings_dict['NAME']))
+
+import django.db.backends.sqlite3.base
+
+if hasattr(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection'):
+    patch(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection',
+        sqlite_create_connection_with_debugging)
+
+if hasattr(django.db.backends.sqlite3.base.DatabaseWrapper, 'get_new_connection'):
+    patch(django.db.backends.sqlite3.base.DatabaseWrapper, 'get_new_connection',
+        sqlite_create_connection_with_debugging)
+
