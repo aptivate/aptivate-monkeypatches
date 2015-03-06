@@ -1,11 +1,13 @@
+from django.template.context import Context
 from django.test import TestCase
 
 import aptivate_monkeypatches.monkeypatches
 
-#from django.test.utils import override_settings
-#@override_settings(CACHE_MIDDLEWARE_ALIAS='test',
+# from django.test.utils import override_settings
+# @override_settings(CACHE_MIDDLEWARE_ALIAS='test',
 #    CACHES={'test': {'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
 #        'LOCATION': 'test_cache'}})
+
 
 class MonkeypatchesTests(TestCase):
     def test_render_to_template_saves_context_without_breaking_caching(self):
@@ -16,14 +18,14 @@ class MonkeypatchesTests(TestCase):
         context can have all kinds of unserialisable objects in it.
         """
 
-        #from django.test.client import RequestFactory
-        #request = RequestFactory().get('/dummy')
-        #request._cache_update_cache = True
+        # from django.test.client import RequestFactory
+        # request = RequestFactory().get('/dummy')
+        # request._cache_update_cache = True
 
-        context = {
+        context = Context({
             'foo': 'bar',
-            'func': lambda x: "whee", # not serializable
-        }
+            'func': lambda x: "whee",  # not serializable
+        })
 
         def simple_view(request):
             from django.template import Template
@@ -39,7 +41,7 @@ class MonkeypatchesTests(TestCase):
         from django.test.utils import override_settings
         with override_settings(
             ROOT_URLCONF=TestUrls,
-            MIDDLEWARE_CLASSES = ('django.middleware.cache.UpdateCacheMiddleware',),
+            MIDDLEWARE_CLASSES=('django.middleware.cache.UpdateCacheMiddleware',),
             CACHE_MIDDLEWARE_ALIAS='test',
             CACHES={'test': {'BACKEND': 'django.core.cache.backends.db.DatabaseCache',
                 'LOCATION': 'test_cache'}}):
@@ -63,8 +65,7 @@ class MonkeypatchesTests(TestCase):
 
         # cache.process_response(request, response)
         # response.render()
-            
+
         # is the context still in the response? tests need this!
         self.assertIn('context', dir(response))
-        self.assertEquals(context, response.context)
-
+        self.assertEquals(list(context), list(response.context))
