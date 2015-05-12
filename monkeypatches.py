@@ -202,7 +202,7 @@ class FieldlineWithCustomReadOnlyField(object):
     """
 
     def __init__(self, form, field, readonly_fields=None, model_admin=None):
-        self.form = form # A django.forms.Form instance
+        self.form = form  # A django.forms.Form instance
         if not hasattr(field, "__iter__"):
             self.fields = [field]
         else:
@@ -517,9 +517,9 @@ def get_response_with_exception_passthru(original_function, self, request):
 
     # Complain if the view returned None (a common error).
     if response is None:
-        if isinstance(callback, types.FunctionType):    # FBV
-            view_name = callback.func_name # If it's a function
-        else:                                           # CBV
+        if isinstance(callback, types.FunctionType):  # FBV
+            view_name = callback.func_name  # If it's a function
+        else:  # CBV
             view_name = callback.__class__.__name__ + '.__call__'
         raise ValueError("The view %s.%s didn't return an HttpResponse object." % (callback.__module__, view_name))
 
@@ -646,18 +646,21 @@ from django.db.models.sql.query import Query
 @before(Query, 'add_filter')
 def add_filter_add_value_capture(self, filter_expr, *args, **kwargs):
     arg, value = filter_expr
-    self._captured_value_for_monkeypatch = value
+    if not hasattr(self, '_captured_value_for_monkeypatch'):
+        self._captured_value_for_monkeypatch = []
+    self._captured_value_for_monkeypatch.append(value)
 @after(Query, 'add_filter')
 def add_filter_remove_value_capture(self, value, *args, **kwargs):
-    delattr(self, '_captured_value_for_monkeypatch')
+    self._captured_value_for_monkeypatch.pop()
 @patch(Query, 'setup_joins')
 def setup_joins_with_value_type_check(original_function, self, *args, **kwargs):
     results = original_function(self, *args, **kwargs)
-    value = getattr(self, '_captured_value_for_monkeypatch', None)
+    value_list = getattr(self, '_captured_value_for_monkeypatch', None)
     # from users.models import Price
     # if results[0].model == Price:
     #     import pdb; pdb.set_trace()
-    if value:
+    if value_list:
+        value = value_list[-1]
         field = results[0]
         target = results[1]
         from django.db.models.fields.related import RelatedField
@@ -792,7 +795,7 @@ def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
     opts = self.model._meta
     app_label = opts.app_label
 
-    from django.contrib.admin.util import unquote # , flatten_fieldsets, get_deleted_objects, model_format_dict
+    from django.contrib.admin.util import unquote  # , flatten_fieldsets, get_deleted_objects, model_format_dict
     obj = self.get_object(request, unquote(object_id))
 
     if not self.has_delete_permission(request, obj):
@@ -813,7 +816,7 @@ def ModelAdmin_delete_view_with_self_get_deleted_objects(self, request,
     (deleted_objects, perms_needed, protected) = self.get_deleted_objects(
         [obj], opts, request, using)
 
-    if request.POST: # The user has already confirmed the deletion.
+    if request.POST:  # The user has already confirmed the deletion.
         if perms_needed:
             raise PermissionDenied
 
@@ -959,9 +962,9 @@ def defaulterrorhandler_with_fixed_raise_statement(original_function,
 
     import sys
     raise errorclass, errorvalue, sys.exc_info()[2]
-#import MySQLdb.cursors
-#@after(MySQLdb.cursors.BaseCursor, '__init__')
-#def BaseCursor_init_with_replacement_error_handler(self, connection):
+# import MySQLdb.cursors
+# @after(MySQLdb.cursors.BaseCursor, '__init__')
+# def BaseCursor_init_with_replacement_error_handler(self, connection):
 #    self.errorhandler = defaulterrorhandler_with_fixed_raise_statement
 
 import south.migration.migrators
@@ -1070,7 +1073,7 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
                     "recursion depth exceeded" % path)
                 return
 
-            #if path == "._container[0].context.dicts[1]['csrf_token']":
+            # if path == "._container[0].context.dicts[1]['csrf_token']":
             #    import pdb; pdb.set_trace()
 
             try:
@@ -1117,7 +1120,7 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
                         break
                     test_and_recurse(depth, "%s[%d]" % (path, index),
                         attr_value)
-            
+
             if original_errors_count == len(pickle_errors):
                 # if we couldn't find any members that were unpicklable, it
                 # must be something about this object itself, so stop here
