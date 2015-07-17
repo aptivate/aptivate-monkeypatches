@@ -20,6 +20,7 @@ import django.template.loader
 # os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
 
 import django.test.client
+from distutils.version import LooseVersion
 @patch(django.test.client.Client, 'request')
 def django_test_client_Client_request_with_unbroken_context(
     django_test_client_Client_request_without_unbroken_context, self,
@@ -909,30 +910,31 @@ except ImportError:
 
 # help to debug broken migrations by not hiding the exception message
 # and stack trace.
-import south.migration.base
-@patch(south.migration.base.Migration, 'migration')
-def Migration_migration_with_usable_stacktrace(original_function, self):
-    "Tries to load the actual migration module"
-    full_name = self.full_name()
+if LooseVersion(django.get_version()) < LooseVersion('1.7'):
+    import south.migration.base
+    @patch(south.migration.base.Migration, 'migration')
+    def Migration_migration_with_usable_stacktrace(original_function, self):
+        "Tries to load the actual migration module"
+        full_name = self.full_name()
 
-    import sys
-    try:
-        migration = sys.modules[full_name]
-    except KeyError:
-        from south import exceptions
+        import sys
         try:
-            migration = __import__(full_name, {}, {}, ['Migration'])
-        except ImportError as e:
-            raise exceptions.UnknownMigration(self, sys.exc_info())
-        except Exception as e:
-            raise exceptions.BrokenMigration, sys.exc_info()[1], \
-                sys.exc_info()[2]
+            migration = sys.modules[full_name]
+        except KeyError:
+            from south import exceptions
+            try:
+                migration = __import__(full_name, {}, {}, ['Migration'])
+            except ImportError as e:
+                raise exceptions.UnknownMigration(self, sys.exc_info())
+            except Exception as e:
+                raise exceptions.BrokenMigration, sys.exc_info()[1], \
+                    sys.exc_info()[2]
 
-    # Override some imports
-    migration._ = lambda x: x  # Fake i18n
-    from south.utils import datetime_utils
-    migration.datetime = datetime_utils
-    return migration
+        # Override some imports
+        migration._ = lambda x: x  # Fake i18n
+        from south.utils import datetime_utils
+        migration.datetime = datetime_utils
+        return migration
 
 # Fix MySQLdb trying to raise an error in a broken way
 import MySQLdb.connections
@@ -967,45 +969,47 @@ def defaulterrorhandler_with_fixed_raise_statement(original_function,
 # def BaseCursor_init_with_replacement_error_handler(self, connection):
 #    self.errorhandler = defaulterrorhandler_with_fixed_raise_statement
 
-import south.migration.migrators
-@patch(south.migration.migrators.Forwards, 'format_backwards')
-def format_backwards_with_error_recovery(original_function, self, migration):
+
+if LooseVersion(django.get_version()) < LooseVersion('1.7'):
+    import south.migration.migrators
+    @patch(south.migration.migrators.Forwards, 'format_backwards')
+    def format_backwards_with_error_recovery(original_function, self, migration):
+        try:
+            return original_function(self, migration)
+        except RuntimeError as e:
+            return "Unable to explain the backwards migration: %s" % e
+
+    # Add support for South migrations to pytest
     try:
-        return original_function(self, migration)
-    except RuntimeError as e:
-        return "Unable to explain the backwards migration: %s" % e
+        # import pdb; pdb.set_trace()
 
-# Add support for South migrations to pytest
-try:
-    # import pdb; pdb.set_trace()
+        # We can't replace pytest_django.fixtures._django_db_setup without
+        # breaking pytest_django, which calls django.core.management.call_command
+        # to execute django's syncdb instead of south's syncdb, so we patch
+        # call_command if necessary, to do what we want instead.
 
-    # We can't replace pytest_django.fixtures._django_db_setup without
-    # breaking pytest_django, which calls django.core.management.call_command
-    # to execute django's syncdb instead of south's syncdb, so we patch
-    # call_command if necessary, to do what we want instead.
+        from django.conf import settings
+        from django.core import management
+        commands = management.get_commands()
+        if commands['syncdb'] == 'south' and getattr(settings,
+            'SOUTH_TESTS_MIGRATE', True):
 
-    from django.conf import settings
-    from django.core import management
-    commands = management.get_commands()
-    if commands['syncdb'] == 'south' and getattr(settings,
-        'SOUTH_TESTS_MIGRATE', True):
+            @patch(management, 'call_command')
+            def call_command_calling_south_instead_of_django_syncdb(original_function,
+                name, *args, **options):
 
-        @patch(management, 'call_command')
-        def call_command_calling_south_instead_of_django_syncdb(original_function,
-            name, *args, **options):
+                # undo the damage done by _django_db_setup
+                commands['syncdb'] = 'south'
 
-            # undo the damage done by _django_db_setup
-            commands['syncdb'] = 'south'
+                if name == 'syncdb':
+                    options['migrate'] = True
+                elif name == 'flush':
+                    return True
 
-            if name == 'syncdb':
-                options['migrate'] = True
-            elif name == 'flush':
-                return True
-
-            return original_function(name, *args, **options)
-except ImportError as e:
-    # probably not using PyTest
-    pass
+                return original_function(name, *args, **options)
+    except ImportError as e:
+        # probably not using PyTest
+        pass
 
 try:
     # catch referencing a field with no rel
