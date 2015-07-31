@@ -1,20 +1,23 @@
-from django.conf import LazySettings, global_settings
-from django.contrib.admin.helpers import Fieldline, AdminField, mark_safe
-from django.contrib.admin.views.main import ChangeList
+from pprint import PrettyPrinter
+
+from django.conf import global_settings
+from django.contrib.admin.helpers import AdminField, mark_safe
 from django.contrib.auth import models as auth_models
 from django.core.urlresolvers import RegexURLResolver, NoReverseMatch
 from django.db.models.fields import AutoField
 from django.db.models.query import QuerySet
 from django.forms import BaseForm
-from django.forms.models import BaseModelForm, InlineForeignKeyField, \
-    construct_instance, NON_FIELD_ERRORS
-from django.template.response import TemplateResponse
-from django.test.client import RequestFactory, MULTIPART_CONTENT, \
-    urlparse, FakePayload
-from django.test.utils import ContextList
-from aptivate_monkeypatch.monkeypatch import before, after, patch, insert
-from pprint import PrettyPrinter
+from django.forms.models import (
+    BaseModelForm, InlineForeignKeyField, construct_instance, NON_FIELD_ERRORS
+)
 import django.template.loader
+from django.template.response import TemplateResponse
+from django.test.client import (
+    RequestFactory, MULTIPART_CONTENT, urlparse, FakePayload
+)
+from django.test.utils import ContextList
+
+from aptivate_monkeypatch.monkeypatch import before, after, patch, insert
 
 # import os
 # os.environ['DJANGO_SETTINGS_MODULE'] = 'settings'
@@ -23,8 +26,7 @@ import django.test.client
 from distutils.version import LooseVersion
 @patch(django.test.client.Client, 'request')
 def django_test_client_Client_request_with_unbroken_context(
-    django_test_client_Client_request_without_unbroken_context, self,
-    **request):
+        django_test_client_Client_request_without_unbroken_context, self, **request):
 
     response = django_test_client_Client_request_without_unbroken_context(self,
         **request)
@@ -33,6 +35,7 @@ def django_test_client_Client_request_with_unbroken_context(
         response.context = response._monkeypatches_contextdata
 
     return response
+
 
 def dont_apply_response_fixes(original_function, self, request, response):
     """
@@ -44,6 +47,7 @@ def dont_apply_response_fixes(original_function, self, request, response):
     return response
 # patch(ClientHandler, 'apply_response_fixes', dont_apply_response_fixes)
 
+
 @patch(QuerySet, 'get')
 def queryset_get_with_exception_detail(original_function, self, *args, **kwargs):
     """
@@ -54,15 +58,18 @@ def queryset_get_with_exception_detail(original_function, self, *args, **kwargs)
 
     try:
         return original_function(self, *args, **kwargs)
-    except (self.model.DoesNotExist, self.model.MultipleObjectsReturned) as e:
+    except (self.model.DoesNotExist, self.model.MultipleObjectsReturned):
         # import pdb; pdb.set_trace()
         import sys
         (klass, message, stack) = sys.exc_info()
         raise klass, "%s (query was: %s, %s)" % (message, args, kwargs), stack
 
+
 @patch(RequestFactory, 'post')
-def post_with_string_data_support(original_function, self, path, data={},
-    content_type=MULTIPART_CONTENT, **extra):
+def post_with_string_data_support(
+    original_function, self, path, data={},
+    content_type=MULTIPART_CONTENT, **extra
+):
     """If the data doesn't have an items() method, then it's probably already
     been converted to a string (encoded), and if we try again we'll call
     the nonexistent items() method and fail, so just don't encode it at
@@ -121,6 +128,7 @@ def post_clean_with_simpler_validation(original_function, self):
         else:
             self._update_errors(e.update_error_dict(None))
 
+
 @patch(BaseForm, '_clean_form')
 def clean_form_with_field_errors(original_function, self):
     """
@@ -144,6 +152,7 @@ def clean_form_with_field_errors(original_function, self):
             self._errors[NON_FIELD_ERRORS] = self.error_class(e.messages)
 
 pp = PrettyPrinter()
+
 
 @patch(RegexURLResolver, 'reverse')
 def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs):
@@ -179,6 +188,7 @@ if '_reverse_with_prefix' in dir(RegexURLResolver):
     # support for Django 1.4:
     patch(RegexURLResolver, '_reverse_with_prefix', reverse_with_debugging)
 
+
 @after(RegexURLResolver, '_populate')
 def populate_reverse_dict_with_module_function_names(self):
     from django.utils.translation import get_language
@@ -195,6 +205,7 @@ def populate_reverse_dict_with_module_function_names(self):
                     function_name = "%s.%s" % (pattern.callback.__module__,
                         pattern.callback.__class__.__name__)
                 reverse_dict.appendlist(function_name, reverse_item)
+
 
 class FieldlineWithCustomReadOnlyField(object):
     """
@@ -226,10 +237,12 @@ class FieldlineWithCustomReadOnlyField(object):
         return mark_safe(u'\n'.join([self.form[f].errors.as_ul() for f in self.fields if f not in self.readonly_fields]).strip('\n'))
 django.contrib.admin.helpers.Fieldline = FieldlineWithCustomReadOnlyField
 
-from django.db.backends.creation import BaseDatabaseCreation
+
+# from django.db.backends.creation import BaseDatabaseCreation
 # @patch(BaseDatabaseCreation, 'destroy_test_db')
-def destroy_test_db_disabled(original_function, self, test_database_name,
-    verbosity):
+def destroy_test_db_disabled(
+    original_function, self, test_database_name, verbosity
+):
     """
     Temporarily disable the deletion of a test database, for post-mortem
     examination.
@@ -244,17 +257,19 @@ if not hasattr(auth_models.Group, 'natural_key'):
     Allow group lookups by name in fixtures, until
     https://code.djangoproject.com/ticket/13914 lands.
     """
-
     from django.db import models as db_models
+
     class GroupManagerWithNaturalKey(db_models.Manager):
         def get_by_natural_key(self, name):
             return self.get(name=name)
     # print "auth_models.Group.objects = %s" % auth_models.Group.objects
     del auth_models.Group._default_manager
     GroupManagerWithNaturalKey().contribute_to_class(auth_models.Group, 'objects')
+
     def group_natural_key(self):
         return (self.name,)
     auth_models.Group.natural_key = group_natural_key
+
 
 def Deserializer_with_debugging(original_function, object_list, **options):
     from django.core.serializers.python import _get_model
@@ -312,11 +327,13 @@ def Deserializer_with_debugging(original_function, object_list, **options):
 # patch(django.core.serializers.python, 'Deserializer',
 #     Deserializer_with_debugging)
 
+
 def save_with_debugging(original_function, self, save_m2m=True, using=None):
     print "%s.save(save_m2m=%s, using=%s)" % (self, save_m2m, using)
     original_function(self, save_m2m, using)
 # patch(django.core.serializers.base.DeserializedObject, 'save',
 #     save_with_debugging)
+
 
 def ContextList_keys(self):
     keys = set()
@@ -326,13 +343,16 @@ def ContextList_keys(self):
     return keys
 ContextList.keys = ContextList_keys
 
-def configure_with_debugging(original_function, self,
-    default_settings=global_settings, **options):
+
+def configure_with_debugging(
+    original_function, self, default_settings=global_settings, **options
+):
     print "LazySettings configured: %s, %s" % (default_settings, options)
     import traceback
     traceback.print_stack()
     return original_function(self, default_settings, **options)
 # patch(LazySettings, 'configure', configure_with_debugging)
+
 
 def setup_with_debugging(original_function, self):
     print "LazySettings setup:"
@@ -373,6 +393,7 @@ patch(ReverseManyRelatedObjectsDescriptor, '__set__',
     related_objects_set_without_clear)
 """
 
+
 def AutoField_to_python_with_improved_debugging(original_function, self, value):
     try:
         return original_function(self, value)
@@ -408,16 +429,15 @@ def template_loader_render_to_string_with_debugging(original_function,
 import django.core.handlers.base
 @patch(django.core.handlers.base.BaseHandler, 'get_response')
 def django_core_handlers_base_BaseHandler_with_context_injection(
-    django_core_handlers_base_BaseHandler_without_context_injection, self,
-    request):
+    django_core_handlers_base_BaseHandler_without_context_injection, self, request
+):
 
     shared_state = {}
 
     # Collect the filename and context used to render templates. How else are
     # we supposed to access it in our tests? SearchView for example calls
     # render_to_response which discards the context used.
-    def template_render_with_debugging(template_render_without_debugging, self,
-        context):
+    def template_render_with_debugging(template_render_without_debugging, self, context):
 
         try:
             shared_state['context'] = context
@@ -428,8 +448,9 @@ def django_core_handlers_base_BaseHandler_with_context_injection(
                 (self.name, e), sys.exc_info()[2]
 
     # Temporarily patch it in
-    with patch(django.template.base.Template, 'render',
-        template_render_with_debugging):
+    with patch(
+        django.template.base.Template, 'render', template_render_with_debugging
+    ):
 
         response = django_core_handlers_base_BaseHandler_without_context_injection(
             self, request)
@@ -469,7 +490,7 @@ def get_response_with_exception_passthru(original_function, self, request):
 
     # print("get_response(%s)" % request)
 
-    from django.core import exceptions, urlresolvers
+    from django.core import urlresolvers
     from django.conf import settings
 
     # Setup default url resolver for this thread, this code is outside
@@ -558,9 +579,9 @@ def urlnode_render_with_debugging(original_function, self, context):
 
 import django.template.loader
 @patch(django.template.loader, 'get_template_from_string')
-def get_template_from_string_with_debug_filename(original_function, source,
-    origin=None, name=None):
-
+def get_template_from_string_with_debug_filename(
+    original_function, source, origin=None, name=None
+):
     """
     Returns a compiled Template object for the given template code,
     handling template inheritance recursively. Unlike the original version,
@@ -1060,14 +1081,14 @@ try:
     from django.utils.six.moves import cPickle as pickle
 except ImportError:
     import pickle
+
+
 @patch(pickle, 'dumps')
 def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None):
     try:
         return original_dumps_function(obj, protocol)
     except pickle.PicklingError as outer_exception:
         # find the unpicklable members
-        import types
-
         seen = []
         pickle_errors = {}
 
@@ -1130,7 +1151,6 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
                 # must be something about this object itself, so stop here
                 pickle_errors[path] = "%s (did not find any errors inside)" % exception
 
-        import pdb; pdb.set_trace()
         recursive_find_unpicklable_members(0, "", obj, outer_exception)
 
         if len(pickle_errors) > 20:
@@ -1143,11 +1163,14 @@ def pickle_dumps_with_error_handling(original_dumps_function, obj, protocol=None
 # (copied from https://github.com/django/django/pull/2001/files)
 import django.dispatch
 import django.test.signals
+
+
 @django.dispatch.receiver(django.test.signals.setting_changed)
 def root_urlconf_changed_fixes_django_ticket_21518(**kwargs):
     if kwargs['setting'] == 'ROOT_URLCONF':
         from django.core.urlresolvers import clear_url_caches
         clear_url_caches()
+
 
 def sqlite_create_connection_with_debugging(original_function, self, *args, **kwargs):
     import sqlite3
@@ -1160,9 +1183,8 @@ import django.db.backends.sqlite3.base
 
 if hasattr(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection'):
     patch(django.db.backends.sqlite3.base.DatabaseWrapper, '_sqlite_create_connection',
-        sqlite_create_connection_with_debugging)
+          sqlite_create_connection_with_debugging)
 
 if hasattr(django.db.backends.sqlite3.base.DatabaseWrapper, 'get_new_connection'):
     patch(django.db.backends.sqlite3.base.DatabaseWrapper, 'get_new_connection',
-        sqlite_create_connection_with_debugging)
-
+          sqlite_create_connection_with_debugging)
