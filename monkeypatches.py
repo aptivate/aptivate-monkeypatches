@@ -170,19 +170,31 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
         # import pdb; pdb.set_trace()
 
         if lookup_view in self.reverse_dict:
-            raise NoReverseMatch(str(e) + (" Possible match: %s" %
-                (self.reverse_dict[lookup_view],)))
+            raise NoReverseMatch(
+                str(e) +
+                " Possible match: %s" % self.reverse_dict[lookup_view]
+            )
         else:
+            # have come across an error where the reverse dict raises error in
+            # pformat, so split that out.
+            try:
+                pp_reverse_dict = "Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)
+            except:
+                pp_reverse_dict = "Could not print reverse map!\n"
             if callable(lookup_view):
-                raise NoReverseMatch(str(e) + "\n" +
-                    ("No such key %s in %s\n\n" % (lookup_view,
-                        [k for k in self.reverse_dict.keys() if callable(k)])) +
-                    ("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
+                callable_keys = [k for k in self.reverse_dict.keys() if callable(k)]
+                raise NoReverseMatch(
+                    str(e) + "\n" +
+                    "No such key %s in %s\n\n" % (lookup_view, callable_keys) +
+                    pp_reverse_dict
+                )
             else:
-                raise NoReverseMatch(str(e) + "\n" +
-                    ("No such key %s in %s\n" % (lookup_view,
-                        [k for k in self.reverse_dict.keys() if not callable(k)])) +
-                    ("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
+                not_callable_keys = [k for k in self.reverse_dict.keys() if not callable(k)]
+                raise NoReverseMatch(
+                    str(e) + "\n" +
+                    "No such key %s in %s\n" % (lookup_view, not_callable_keys) +
+                    pp_reverse_dict
+                )
 
 if '_reverse_with_prefix' in dir(RegexURLResolver):
     # support for Django 1.4:
