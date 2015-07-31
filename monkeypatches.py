@@ -155,10 +155,10 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
     try:
         return original_function(self, lookup_view, *args, **kwargs)
     except NoReverseMatch as e:
-    	# if the function is a callable, it might be a wrapper
-    	# function which isn't identical (comparable) to another
-    	# wrapping of the same function
-    	# import pdb; pdb.set_trace()
+        # if the function is a callable, it might be a wrapper
+        # function which isn't identical (comparable) to another
+        # wrapping of the same function
+        # import pdb; pdb.set_trace()
 
         if lookup_view in self.reverse_dict:
             raise NoReverseMatch(str(e) + (" Possible match: %s" %
@@ -171,9 +171,9 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
                     ("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
             else:
                 raise NoReverseMatch(str(e) + "\n" +
-                	("No such key %s in %s\n" % (lookup_view,
+                    ("No such key %s in %s\n" % (lookup_view,
                         [k for k in self.reverse_dict.keys() if not callable(k)])) +
-                	("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
+                    ("Complete reverse map: %s\n" % pp.pformat(self.reverse_dict)))
 
 if '_reverse_with_prefix' in dir(RegexURLResolver):
     # support for Django 1.4:
@@ -181,20 +181,20 @@ if '_reverse_with_prefix' in dir(RegexURLResolver):
 
 @after(RegexURLResolver, '_populate')
 def populate_reverse_dict_with_module_function_names(self):
-	from django.utils.translation import get_language
-	language_code = get_language()
-	reverse_dict = self._reverse_dict[language_code]
-	for pattern in reversed(self.url_patterns):
-		if not isinstance(pattern, RegexURLResolver):
-			# import pdb; pdb.set_trace()
-			for reverse_item in reverse_dict.getlist(pattern.callback):
-				if hasattr(pattern.callback, '__name__'):
-					function_name = "%s.%s" % (pattern.callback.__module__,
-						pattern.callback.__name__)
-				else:
-					function_name = "%s.%s" % (pattern.callback.__module__,
-						pattern.callback.__class__.__name__)
-				reverse_dict.appendlist(function_name, reverse_item)
+    from django.utils.translation import get_language
+    language_code = get_language()
+    reverse_dict = self._reverse_dict[language_code]
+    for pattern in reversed(self.url_patterns):
+        if not isinstance(pattern, RegexURLResolver):
+            # import pdb; pdb.set_trace()
+            for reverse_item in reverse_dict.getlist(pattern.callback):
+                if hasattr(pattern.callback, '__name__'):
+                    function_name = "%s.%s" % (pattern.callback.__module__,
+                        pattern.callback.__name__)
+                else:
+                    function_name = "%s.%s" % (pattern.callback.__module__,
+                        pattern.callback.__class__.__name__)
+                reverse_dict.appendlist(function_name, reverse_item)
 
 class FieldlineWithCustomReadOnlyField(object):
     """
