@@ -172,7 +172,7 @@ def reverse_with_debugging(original_function, self, lookup_view, *args, **kwargs
         if lookup_view in self.reverse_dict:
             raise NoReverseMatch(
                 str(e) +
-                " Possible match: %s" % self.reverse_dict[lookup_view]
+                " Possible match: %s" % unicode(self.reverse_dict[lookup_view])
             )
         else:
             # have come across an error where the reverse dict raises error in
