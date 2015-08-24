@@ -247,7 +247,14 @@ class FieldlineWithCustomReadOnlyField(object):
 
     def errors(self):
         return mark_safe(u'\n'.join([self.form[f].errors.as_ul() for f in self.fields if f not in self.readonly_fields]).strip('\n'))
-django.contrib.admin.helpers.Fieldline = FieldlineWithCustomReadOnlyField
+# HD 24/8/2015 - disable this as it caused problems with my local version of
+# inaspauthoraid - I get a 500 when trying to edit a user.  The project also
+# has a custom user model.
+#
+# At any rate, we don't use the CustomReadOnly fields in inaspauthoraid - as
+# far as I can tell, only YouWin uses them.
+if LooseVersion(django.get_version()) < LooseVersion('1.7'):
+    django.contrib.admin.helpers.Fieldline = FieldlineWithCustomReadOnlyField
 
 
 # from django.db.backends.creation import BaseDatabaseCreation
