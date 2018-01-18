@@ -34,9 +34,9 @@ class MonkeypatchesTests(TestCase):
             from django.template.response import SimpleTemplateResponse
             return SimpleTemplateResponse(template, context)
 
-        from django.conf.urls import patterns, url
+        from django.conf.urls import url
         class TestUrls:
-            urlpatterns = patterns('', url(r'test/$', simple_view, name='test'))
+            urlpatterns = (url(r'test/$', simple_view, name='test'),)
 
         from django.test.utils import override_settings
         with override_settings(
